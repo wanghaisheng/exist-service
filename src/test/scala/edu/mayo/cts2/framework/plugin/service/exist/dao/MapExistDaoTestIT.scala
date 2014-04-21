@@ -23,7 +23,7 @@ class MapExistDaoTestIT extends AssertionsForJUnit {
   @Autowired var dao:ExistDaoImpl = null
   
   @Before def cleanExist() {
-    dao.getExistManager().getCollectionManagementService().removeCollection("/db");
+		dao.removeCollection(dao.getExistManager().getCollectionRoot());
   }
    
   @Test def testInsertMap() {

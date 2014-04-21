@@ -18,32 +18,11 @@
  */
 package edu.mayo.cts2.framework.plugin.service.exist.profile;
 
-import java.util.ArrayList;
-import java.util.HashSet;
-import java.util.Iterator;
-import java.util.List;
-import java.util.Set;
-import java.util.TreeSet;
-
-import org.apache.commons.lang.StringUtils;
-import org.springframework.beans.factory.InitializingBean;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.xmldb.api.base.Resource;
-import org.xmldb.api.base.ResourceIterator;
-import org.xmldb.api.base.ResourceSet;
-import org.xmldb.api.base.XMLDBException;
-
 import edu.mayo.cts2.framework.core.url.UrlConstructor;
-import edu.mayo.cts2.framework.filter.match.StateAdjustingPropertyReference;
-import edu.mayo.cts2.framework.filter.match.StateAdjustingPropertyReference.StateUpdater;
+import edu.mayo.cts2.framework.filter.match.StateAdjustingComponentReference;
+import edu.mayo.cts2.framework.filter.match.StateAdjustingComponentReference.StateUpdater;
 import edu.mayo.cts2.framework.model.command.ResolvedReadContext;
-import edu.mayo.cts2.framework.model.core.MatchAlgorithmReference;
-import edu.mayo.cts2.framework.model.core.PredicateReference;
-import edu.mayo.cts2.framework.model.core.PropertyReference;
-import edu.mayo.cts2.framework.model.core.ResourceDescription;
-import edu.mayo.cts2.framework.model.core.ResourceDescriptionDirectoryEntry;
-import edu.mayo.cts2.framework.model.core.ResourceVersionDescription;
-import edu.mayo.cts2.framework.model.core.ResourceVersionDescriptionDirectoryEntry;
+import edu.mayo.cts2.framework.model.core.*;
 import edu.mayo.cts2.framework.model.directory.DirectoryResult;
 import edu.mayo.cts2.framework.plugin.service.exist.dao.ExistResourceDao;
 import edu.mayo.cts2.framework.plugin.service.exist.dao.SummaryTransform;
@@ -53,6 +32,15 @@ import edu.mayo.cts2.framework.plugin.service.exist.xpath.XpathStateUpdater;
 import edu.mayo.cts2.framework.service.meta.StandardMatchAlgorithmReference;
 import edu.mayo.cts2.framework.service.meta.StandardModelAttributeReference;
 import edu.mayo.cts2.framework.service.profile.BaseQueryService;
+import org.apache.commons.lang.StringUtils;
+import org.springframework.beans.factory.InitializingBean;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.xmldb.api.base.Resource;
+import org.xmldb.api.base.ResourceIterator;
+import org.xmldb.api.base.ResourceSet;
+import org.xmldb.api.base.XMLDBException;
+
+import java.util.*;
 
 /**
  * The Class AbstractService.
@@ -63,6 +51,8 @@ public abstract class AbstractExistQueryService
 	<R,Summary,Restrictions,
 	S extends XpathState> extends AbstractExistService
 	implements BaseQueryService, InitializingBean {
+	
+	public static final String REPLACE_INDICATOR = "(:PATH_INSERT_HERE:)";
 	
 	@javax.annotation.Resource
 	private ExistResourceDao existResourceDao;
@@ -90,6 +80,37 @@ public abstract class AbstractExistQueryService
 	protected String getChangeSetUri(ResolvedReadContext readContext){
 		return readContext == null ? null : readContext.getChangeSetContextUri();
 	}
+
+    private String getQueryString(String xpath){
+        String queryString = (StringUtils.isNotBlank(xpath) ? xpath : "");
+
+        int pos = queryString.indexOf(REPLACE_INDICATOR);
+        if (pos >=0) {
+            queryString = queryString.substring(0, pos) + this.getResourceInfo().getResourceXpath() + queryString.substring(pos + REPLACE_INDICATOR.length());
+        }
+        else {
+            queryString = this.getResourceInfo().getResourceXpath() + queryString;
+        }
+
+        return queryString;
+    }
+
+    public int doCount(
+            PathInfo resourceInfo,
+            String changeSetUri,
+            String collectionPath,
+            String xpath){
+        if(changeSetUri != null){
+            throw new UnsupportedOperationException("Cannot query COUNTs with a ChangeSet.");
+        }
+
+        String queryString = this.getQueryString(xpath);
+
+        return this.existResourceDao.count(
+            ExistServiceUtils.createPath(
+                this.getResourceInfo().getResourceBasePath(),
+                    collectionPath), queryString);
+    }
 	
 	public DirectoryResult<Summary> getResourceSummaries(
 			PathInfo resourceInfo,
@@ -98,8 +119,7 @@ public abstract class AbstractExistQueryService
 			String xpath,
 			int start, 
 			int max) {
-		
-		String queryString = this.getResourceInfo().getResourceXpath() + (StringUtils.isNotBlank(xpath) ? xpath : "");
+		String queryString = this.getQueryString(xpath);
 
 		String allResourcesCollectionPath = ExistServiceUtils.createPath(
 				this.getResourceInfo().getResourceBasePath(),
@@ -172,7 +192,7 @@ public abstract class AbstractExistQueryService
 					allResourcesCollectionPath, queryString, start, max);
 		}
 
-		return this.getResourceSummaries(collection, queryString, start, max,
+		return this.getResourceSummaries(collection, start, max,
 				transform);
 	}
 	
@@ -219,7 +239,6 @@ public abstract class AbstractExistQueryService
 	
 	private DirectoryResult<Summary> getResourceSummaries(
 			ResourceSet collection,
-			String xpath,
 			int start,
 			int max,
 			SummaryTransform<Summary, R> transform) {
@@ -292,20 +311,31 @@ public abstract class AbstractExistQueryService
 		returnSet.add(StandardMatchAlgorithmReference.CONTAINS.getMatchAlgorithmReference());
 		returnSet.add(StandardMatchAlgorithmReference.EXACT_MATCH.getMatchAlgorithmReference());
 		returnSet.add(StandardMatchAlgorithmReference.STARTS_WITH.getMatchAlgorithmReference());
-
+		returnSet.add(new MatchAlgorithmReference("lucene"));
 		return returnSet;
 	}
 
-	public Set<StateAdjustingPropertyReference<S>> getSupportedSearchReferences() {
-		Set<StateAdjustingPropertyReference<S>> returnSet = 
-				new HashSet<StateAdjustingPropertyReference<S>>();
-		
-		StateAdjustingPropertyReference<S> resourceName = 
-				StateAdjustingPropertyReference.toPropertyReference(
-					StandardModelAttributeReference.RESOURCE_NAME.getPropertyReference(), 
+	public Set<StateAdjustingComponentReference<S>> getSupportedSearchReferences() {
+		Set<StateAdjustingComponentReference<S>> returnSet =
+				new HashSet<StateAdjustingComponentReference<S>>();
+
+        StateAdjustingComponentReference<S> resourceName =
+                StateAdjustingComponentReference.toComponentReference(
+					StandardModelAttributeReference.RESOURCE_NAME.getComponentReference(),
 					getResourceNameStateUpdater());
 		
 		returnSet.add(resourceName);
+
+        StateUpdater<S> resourceSynopsisXpath = this.getResourceSynopsisStateUpdater();
+
+        if(resourceSynopsisXpath != null){
+            StateAdjustingComponentReference<S> resourceDescription =
+                    StateAdjustingComponentReference.toComponentReference(
+                            StandardModelAttributeReference.RESOURCE_SYNOPSIS.getComponentReference(),
+                            resourceSynopsisXpath);
+
+            returnSet.add(resourceDescription);
+        }
 		
 		return returnSet;
 	}
@@ -313,21 +343,49 @@ public abstract class AbstractExistQueryService
 	
 	
 	@Override
-	public Set<? extends PropertyReference> getSupportedSortReferences() {
+	public Set<? extends ComponentReference> getSupportedSortReferences() {
 		return null;
 	}
 
 	@Override
 	public Set<PredicateReference> getKnownProperties() {
-		return null;
+		
+		//This isn't properly supported yet - however - the common use case of filtering on text properties is handled by search references.  so return that.
+		//Note, there also seems to be confusion between knownProperties and supportedSearchReferences... the exist service is currently using 
+		//getSupportedSearchReferences internally to resolve things, when it seems like it should actually be using this.
+		//At the moment, they both return the same content, so thing are working.  But something isn't right here.
+		//Note that the ValueSetDefinitionResolution service calls this to determine what properties to advertise to the user - which are then used by the 
+		//user while resolving PropertyQuery value set definitions
+		HashSet<PredicateReference> result = new HashSet<PredicateReference>();
+		ModelAttributeReference mar = StandardModelAttributeReference.RESOURCE_NAME.getModelAttributeReference();
+		PredicateReference pr = new PredicateReference();
+		pr.setHref(mar.getHref());
+		pr.setName(mar.getContent());
+		pr.setUri(mar.getUri());
+		result.add(pr);
+		
+		mar = StandardModelAttributeReference.RESOURCE_SYNOPSIS.getModelAttributeReference();
+		pr = new PredicateReference();
+		pr.setHref(mar.getHref());
+		pr.setName(mar.getContent());
+		pr.setUri(mar.getUri());
+		result.add(pr);
+		return result;
 	}
 
 	private StateUpdater<S> getResourceNameStateUpdater(){
-		
 		return new XpathStateUpdater<S>(
 				this.getResourceInfo().getResourceNameXpath());
-		
 	}
+
+    /**
+     * Subclasses can override this to provide Description search functionality.
+     *
+     * @return
+     */
+    protected StateUpdater<S> getResourceSynopsisStateUpdater(){
+        return null;
+    }
 
 	protected abstract PathInfo getResourceInfo();
 

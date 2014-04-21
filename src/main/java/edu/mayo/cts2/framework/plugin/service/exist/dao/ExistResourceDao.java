@@ -10,6 +10,8 @@ public interface ExistResourceDao {
 			String xpath,
 			int start, 
 			int max);
+
+    public int count(String collectionPath, String xpathQuery);
 	
 	public void storeResource(String path, String resourceName, Object resource);
 	
@@ -24,5 +26,15 @@ public interface ExistResourceDao {
 	public Resource getResourceByXpath(String collectionPath, String xpathQuery);
 
 	public void removeCollection(String changeSetDir);
+	
+	/**
+	 * @return The number of nodes modified
+	 */
+	public long update(String collectionPath, String commands);
+	
+	/**
+	 * @return The number of nodes modified
+	 */
+	public long updateResource(String collectionPath, String resourceId, String commands);
 
 }

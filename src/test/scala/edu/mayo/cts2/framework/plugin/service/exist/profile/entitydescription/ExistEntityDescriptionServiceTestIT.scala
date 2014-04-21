@@ -28,6 +28,7 @@ import edu.mayo.cts2.framework.model.util.ModelUtils
 import edu.mayo.cts2.framework.plugin.service.exist.dao.ExistManager
 import edu.mayo.cts2.framework.service.profile.entitydescription.name.EntityDescriptionReadId
 import edu.mayo.cts2.framework.service.profile.update.ChangeSetService
+import edu.mayo.cts2.framework.plugin.service.exist.dao.ExistDaoImpl
 
 
 @RunWith(classOf[SpringJUnit4ClassRunner])
@@ -40,12 +41,13 @@ class ExistEntityDescriptionServiceTestIT extends AssertionsForJUnit {
   @Autowired var readService:ExistEntityDescriptionReadService = null
   @Autowired var maintService:ExistEntityDescriptionMaintenanceService = null
   @Autowired var manager:ExistManager = null
+  @Autowired var dao:ExistDaoImpl = null
   
   @Autowired var changeSetService:ChangeSetService = null
   
   @Before def cleanExist() {
-    	manager.getCollectionManagementService().removeCollection("/db");
-  }
+		dao.removeCollection(manager.getCollectionRoot());
+	}
   
     def buildChangeableElementGroup(uri:String):ChangeableElementGroup = {
 	  var g = new ChangeableElementGroup()

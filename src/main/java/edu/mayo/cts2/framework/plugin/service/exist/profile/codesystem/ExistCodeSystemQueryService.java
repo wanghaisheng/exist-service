@@ -1,9 +1,8 @@
 package edu.mayo.cts2.framework.plugin.service.exist.profile.codesystem;
 
-import org.springframework.stereotype.Component;
-import org.xmldb.api.base.Resource;
-
+import edu.mayo.cts2.framework.filter.match.StateAdjustingComponentReference;
 import edu.mayo.cts2.framework.model.codesystem.CodeSystemCatalogEntry;
+import edu.mayo.cts2.framework.model.codesystem.CodeSystemCatalogEntryListEntry;
 import edu.mayo.cts2.framework.model.codesystem.CodeSystemCatalogEntrySummary;
 import edu.mayo.cts2.framework.model.command.Page;
 import edu.mayo.cts2.framework.model.core.CodeSystemVersionReference;
@@ -13,8 +12,11 @@ import edu.mayo.cts2.framework.plugin.service.exist.profile.AbstractExistQuerySe
 import edu.mayo.cts2.framework.plugin.service.exist.profile.PathInfo;
 import edu.mayo.cts2.framework.plugin.service.exist.restrict.directory.XpathDirectoryBuilder;
 import edu.mayo.cts2.framework.plugin.service.exist.restrict.directory.XpathDirectoryBuilder.XpathState;
+import edu.mayo.cts2.framework.plugin.service.exist.xpath.XpathStateUpdater;
 import edu.mayo.cts2.framework.service.profile.ResourceQuery;
 import edu.mayo.cts2.framework.service.profile.codesystem.CodeSystemQueryService;
+import org.springframework.stereotype.Component;
+import org.xmldb.api.base.Resource;
 
 @Component
 public class ExistCodeSystemQueryService 
@@ -32,6 +34,10 @@ public class ExistCodeSystemQueryService
 	protected CodeSystemCatalogEntrySummary createSummary() {
 		return new CodeSystemCatalogEntrySummary();
 	}
+
+    protected StateAdjustingComponentReference.StateUpdater<XpathState> getResourceSynopsisStateUpdater() {
+        return new XpathStateUpdater<XpathState>("core:resourceSynopsis/core:value");
+    }
 
 	@Override
 	protected CodeSystemCatalogEntrySummary doTransform(
@@ -119,7 +125,7 @@ public class ExistCodeSystemQueryService
 	}
 
 	@Override
-	public DirectoryResult<CodeSystemCatalogEntry> getResourceList(
+	public DirectoryResult<CodeSystemCatalogEntryListEntry> getResourceList(
 			ResourceQuery query, 
 			SortCriteria sortCriteria,
 			Page page) {

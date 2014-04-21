@@ -1,33 +1,11 @@
 package edu.mayo.cts2.framework.plugin.service.exist.profile.entitydescription;
 
-import java.util.Arrays;
-import java.util.HashSet;
-import java.util.Set;
-
-import javax.annotation.Resource;
-
-import org.apache.commons.collections.CollectionUtils;
-import org.apache.commons.lang.StringUtils;
-import org.springframework.stereotype.Component;
-
-import edu.mayo.cts2.framework.filter.match.StateAdjustingPropertyReference;
-import edu.mayo.cts2.framework.filter.match.StateAdjustingPropertyReference.StateUpdater;
+import edu.mayo.cts2.framework.filter.match.StateAdjustingComponentReference.StateUpdater;
 import edu.mayo.cts2.framework.model.command.Page;
 import edu.mayo.cts2.framework.model.command.ResolvedReadContext;
-import edu.mayo.cts2.framework.model.core.CodeSystemReference;
-import edu.mayo.cts2.framework.model.core.CodeSystemVersionReference;
-import edu.mayo.cts2.framework.model.core.DescriptionInCodeSystem;
-import edu.mayo.cts2.framework.model.core.EntityReferenceList;
-import edu.mayo.cts2.framework.model.core.NameAndMeaningReference;
-import edu.mayo.cts2.framework.model.core.ScopedEntityName;
-import edu.mayo.cts2.framework.model.core.SortCriteria;
-import edu.mayo.cts2.framework.model.core.VersionTagReference;
+import edu.mayo.cts2.framework.model.core.*;
 import edu.mayo.cts2.framework.model.directory.DirectoryResult;
-import edu.mayo.cts2.framework.model.entity.Designation;
-import edu.mayo.cts2.framework.model.entity.EntityDescription;
-import edu.mayo.cts2.framework.model.entity.EntityDescriptionBase;
-import edu.mayo.cts2.framework.model.entity.EntityDirectoryEntry;
-import edu.mayo.cts2.framework.model.entity.NamedEntityDescription;
+import edu.mayo.cts2.framework.model.entity.*;
 import edu.mayo.cts2.framework.model.entity.types.DesignationRole;
 import edu.mayo.cts2.framework.model.service.core.EntityNameOrURI;
 import edu.mayo.cts2.framework.model.service.core.EntityNameOrURIList;
@@ -41,9 +19,16 @@ import edu.mayo.cts2.framework.plugin.service.exist.xpath.XpathStateBuildingRest
 import edu.mayo.cts2.framework.plugin.service.exist.xpath.XpathStateUpdater;
 import edu.mayo.cts2.framework.service.command.restriction.EntityDescriptionQueryServiceRestrictions;
 import edu.mayo.cts2.framework.service.command.restriction.EntityDescriptionQueryServiceRestrictions.HierarchyRestriction.HierarchyType;
-import edu.mayo.cts2.framework.service.meta.StandardModelAttributeReference;
 import edu.mayo.cts2.framework.service.profile.entitydescription.EntityDescriptionQuery;
 import edu.mayo.cts2.framework.service.profile.entitydescription.EntityDescriptionQueryService;
+import org.apache.commons.collections.CollectionUtils;
+import org.apache.commons.lang.StringUtils;
+import org.springframework.stereotype.Component;
+
+import javax.annotation.Resource;
+import java.util.Arrays;
+import java.util.HashSet;
+import java.util.Set;
 
 @Component
 public class ExistEntityDescriptionQueryService 
@@ -74,8 +59,10 @@ public class ExistEntityDescriptionQueryService
 		
 		String codeSystemName = 
 				base.getDescribingCodeSystemVersion().getCodeSystem().getContent();
+		String codeSystemURI = base.getDescribingCodeSystemVersion().getCodeSystem().getUri();
 		String codeSystemVersionName = 
 				base.getDescribingCodeSystemVersion().getVersion().getContent();
+		String codeSystemVersionURI = base.getDescribingCodeSystemVersion().getVersion().getUri();
 
 		summary.setName(scopedName);
 		summary.setAbout(base.getAbout());
@@ -91,7 +78,9 @@ public class ExistEntityDescriptionQueryService
 		summary.addKnownEntityDescription(
 				getDescriptionInCodeSystemVersion(
 					 codeSystemName,
+					 codeSystemURI,
 					 codeSystemVersionName,
+					 codeSystemVersionURI,
 					 base));
 		
 		
@@ -118,10 +107,10 @@ public class ExistEntityDescriptionQueryService
 	}
 
 	@Override
-	public DirectoryResult<EntityDescription> getResourceList(
-			EntityDescriptionQuery query,
-			SortCriteria sort,
-			Page page) {
+	public DirectoryResult<EntityListEntry> getResourceList(
+            EntityDescriptionQuery query,
+            SortCriteria sort,
+            Page page) {
 		throw new UnsupportedOperationException();
 
 	}
@@ -129,26 +118,19 @@ public class ExistEntityDescriptionQueryService
 	@Override
 	public int count(
 			EntityDescriptionQuery query){
-		throw new UnsupportedOperationException();
+        EntityDescriptionDirectoryBuilder builder =
+                new EntityDescriptionDirectoryBuilder(
+                        this.getChangeSetUri(query.getReadContext()));
 
+        return builder.
+                restrict(query.getRestrictions()).
+                restrict(query.getFilterComponent()).
+                restrict(query.getQuery()).
+                count();
 	}
 
-	
-	public Set<StateAdjustingPropertyReference<EntityDescriptionDirectoryState>> getSupportedSearchReferences() {
-		Set<StateAdjustingPropertyReference<EntityDescriptionDirectoryState>> set = super.getSupportedSearchReferences();
-		
-		StateAdjustingPropertyReference<EntityDescriptionDirectoryState> resourceSynopsis = 
-				StateAdjustingPropertyReference.toPropertyReference(
-						StandardModelAttributeReference.RESOURCE_SYNOPSIS.getPropertyReference(),
-						getResourceSynopsisStateUpdater());
-			
-		set.add(resourceSynopsis);
-		
-		return set;
-	}
-	
-	private StateUpdater<EntityDescriptionDirectoryState> getResourceSynopsisStateUpdater() {
-		return new XpathStateUpdater<EntityDescriptionDirectoryState>(".//entity:designation/core:value/text()");
+	protected StateUpdater<EntityDescriptionDirectoryState> getResourceSynopsisStateUpdater() {
+		return new XpathStateUpdater<EntityDescriptionDirectoryState>("*/entity:designation/core:value");
 	}
 
 	private class EntityDescriptionDirectoryBuilder extends XpathDirectoryBuilder<EntityDescriptionDirectoryState,EntityDirectoryEntry> {
@@ -157,15 +139,31 @@ public class ExistEntityDescriptionQueryService
 			super(new EntityDescriptionDirectoryState(), 
 					new Callback<EntityDescriptionDirectoryState, EntityDirectoryEntry>() {
 
+                private String getCodeSystemVersion(EntityDescriptionDirectoryState state){
+                    String codeSystemVersion = "";
+
+                    if(state.getCodeSystemVersions() != null &&
+                            state.getCodeSystemVersions().size() == 1){
+                        codeSystemVersion = state.getCodeSystemVersions().iterator().next().getName();
+                    } else if(state.getCodeSystemVersions() != null &&
+                            state.getCodeSystemVersions().size() > 1){
+                        throw new UnsupportedOperationException("Cannot currently restrict to more than one CodeSystemVersion.");
+                    }
+
+                    return codeSystemVersion;
+                }
+
 				@Override
 				public DirectoryResult<EntityDirectoryEntry> execute(
 						EntityDescriptionDirectoryState state, 
 						int start, 
 						int maxResults) {
+					String codeSystemVersion = getCodeSystemVersion(state);
+					
 					return getResourceSummaries(
 							getResourceInfo(),
 							changeSetUri,
-							ExistServiceUtils.createPath(state.getCodeSystemVersion()),
+							ExistServiceUtils.createPath(codeSystemVersion),
 							state.getXpath(), 
 							start, 
 							maxResults);
@@ -173,7 +171,13 @@ public class ExistEntityDescriptionQueryService
 
 				@Override
 				public int executeCount(EntityDescriptionDirectoryState state) {
-					throw new UnsupportedOperationException();
+                    String codeSystemVersion = getCodeSystemVersion(state);
+
+                    return doCount(
+                            getResourceInfo(),
+                            changeSetUri,
+                            ExistServiceUtils.createPath(codeSystemVersion),
+                            state.getXpath());
 				}},
 				
 				getSupportedMatchAlgorithms(),
@@ -187,8 +191,8 @@ public class ExistEntityDescriptionQueryService
 						@Override
 						public EntityDescriptionDirectoryState restrict(EntityDescriptionDirectoryState currentState) {
 							if(restriction != null &&
-									restriction.getCodeSystemVersion() != null){
-								currentState.setCodeSystemVersion(restriction.getCodeSystemVersion().getName());
+									restriction.getCodeSystemVersions() != null){
+								currentState.setCodeSystemVersions(restriction.getCodeSystemVersions());
 							}
 							
 							return currentState;
@@ -197,18 +201,46 @@ public class ExistEntityDescriptionQueryService
 			if(restriction != null &&
 					CollectionUtils.isNotEmpty(restriction.getEntities())){
 				
-				//TODO: This currently does NOT resolve URIs
-				Set<String> names = new HashSet<String>();
+				Set<ScopedEntityName> names = new HashSet<ScopedEntityName>();
+                Set<String> uris = new HashSet<String>();
 				for(EntityNameOrURI entityNameOrUri : restriction.getEntities()){
-					names.add(entityNameOrUri.getEntityName().getName());
+                    if(entityNameOrUri.getEntityName() != null){
+                        names.add(entityNameOrUri.getEntityName());
+                    } else {
+                        uris.add(entityNameOrUri.getUri());
+                    }
 				}
-		
-				getRestrictions().add(
-						new XpathStateBuildingRestriction<EntityDescriptionDirectoryState>(
-								".//entity:entityID/core:name", 
-								"text()", 
-								AllOrAny.ANY,
-								names));
+
+                if(names.size() > 0){
+                    for(final ScopedEntityName name : names){
+                        getRestrictions().add(new StateBuildingRestriction<EntityDescriptionDirectoryState>() {
+                            @Override
+                            public EntityDescriptionDirectoryState restrict(EntityDescriptionDirectoryState state) {
+                                boolean isBlankState = StringUtils.isBlank(state.getXpath());
+
+                                String namespaceXpath = "";
+                                if(! StringUtils.isBlank(name.getNamespace())){
+                                    namespaceXpath = " and */entity:entityID/core:namespace = '" + name.getNamespace() + "'";
+                                }
+
+                                state.setXpath(
+                                    state.getXpath() + (isBlankState ? "" : " | " + entityDescriptionResourceInfo.getResourceXpath()) +
+                                            "[*/entity:entityID/core:name = '" + name.getName() + "'" + namespaceXpath + "]");
+
+                                return state;
+                            }
+                        });
+                    }
+                }
+
+                if(uris.size() > 0){
+                    getRestrictions().add(
+                            new XpathStateBuildingRestriction<EntityDescriptionDirectoryState>(
+                                    "*",
+                                    "@about",
+                                    AllOrAny.ANY,
+                                    uris));
+                }
 			}
 			
 			if(restriction != null && restriction.getHierarchyRestriction()!= null){
@@ -223,15 +255,15 @@ public class ExistEntityDescriptionQueryService
 				if(parent.getEntityName() != null){
 					getRestrictions().add(
 						new XpathStateBuildingRestriction<EntityDescriptionDirectoryState>(
-								".//entity:parent/core:name", 
-								"text()", 
+								"*/entity:parent/core:name",
+								".", 
 								AllOrAny.ANY,
 								Arrays.asList(parent.getEntityName().getName())));
 				} else {
 					getRestrictions().add(
 							new XpathStateBuildingRestriction<EntityDescriptionDirectoryState>(
-								".//entity:parent", 
-								"@uri", 
+								"*/entity:parent",
+								"@uri",
 								AllOrAny.ANY,
 								Arrays.asList(parent.getUri())));
 				}
@@ -256,7 +288,9 @@ public class ExistEntityDescriptionQueryService
 
 	private DescriptionInCodeSystem getDescriptionInCodeSystemVersion(
 			String codeSystem, 
+			String codeSystemURI,
 			String codeSystemVersion,
+			String codeSystemVersionURI,
 			EntityDescriptionBase entity) {
 
 		Designation designation = this.getPreferredDesignation(entity);
@@ -268,21 +302,22 @@ public class ExistEntityDescriptionQueryService
 		}
 
 		description.setDescribingCodeSystemVersion(
-				this.buildCodeSystemVersionReference(codeSystem, codeSystemVersion));
+				this.buildCodeSystemVersionReference(codeSystem, codeSystemURI, codeSystemVersion, codeSystemVersionURI));
 		
 		description.setHref(this.getUrlConstructor().createEntityUrl(codeSystem, codeSystemVersion, entity.getEntityID()));
 
 		return description;
 	}
 	
-	protected CodeSystemVersionReference buildCodeSystemVersionReference(String codeSystemName, String codeSystemVersionName){
+	protected CodeSystemVersionReference buildCodeSystemVersionReference(String codeSystemName, String codeSystemURI, String codeSystemVersionName, 
+			String codeSystemVersionURI){
 		CodeSystemVersionReference ref = new CodeSystemVersionReference();
 		
-		ref.setCodeSystem(this.buildCodeSystemReference(codeSystemName));
+		ref.setCodeSystem(this.buildCodeSystemReference(codeSystemName, codeSystemURI));
 		
 		NameAndMeaningReference version = new NameAndMeaningReference();
 		version.setContent(codeSystemVersionName);
-	
+		version.setUri(codeSystemVersionURI);
 		version.setHref(this.getUrlConstructor().createCodeSystemVersionUrl(codeSystemName, codeSystemVersionName));
 			
 		ref.setVersion(version);
@@ -290,12 +325,13 @@ public class ExistEntityDescriptionQueryService
 		return ref;
 	}
 	
-	protected CodeSystemReference buildCodeSystemReference(String codeSystemName){
+	protected CodeSystemReference buildCodeSystemReference(String codeSystemName, String codeSystemURI){
 		CodeSystemReference codeSystemReference = new CodeSystemReference();
 		String codeSystemPath = this.getUrlConstructor().createCodeSystemUrl(codeSystemName);
 
 		codeSystemReference.setContent(codeSystemName);
 		codeSystemReference.setHref(codeSystemPath);
+		codeSystemReference.setUri(codeSystemURI);
 		
 		return codeSystemReference;
 	}
@@ -312,7 +348,8 @@ public class ExistEntityDescriptionQueryService
 
 	@Override
 	public Set<? extends VersionTagReference> getSupportedTags() {
-		return null;
+		//TODO not actually supported, but the framework won't marshall unless this is populated
+		return new HashSet<VersionTagReference>(Arrays.asList(new VersionTagReference[] {new VersionTagReference("CURRENT")}));
 	}
 
 	@Override

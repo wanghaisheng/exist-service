@@ -18,10 +18,6 @@
  */
 package edu.mayo.cts2.framework.plugin.service.exist.profile;
 
-import java.util.Date;
-
-import org.xmldb.api.base.Resource;
-
 import edu.mayo.cts2.framework.model.core.ChangeDescription;
 import edu.mayo.cts2.framework.model.core.ChangeableElementGroup;
 import edu.mayo.cts2.framework.model.core.IsChangeable;
@@ -29,9 +25,13 @@ import edu.mayo.cts2.framework.model.core.types.ChangeCommitted;
 import edu.mayo.cts2.framework.model.core.types.ChangeType;
 import edu.mayo.cts2.framework.model.service.core.BaseMaintenanceService;
 import edu.mayo.cts2.framework.model.updates.ChangeableResource;
+import edu.mayo.cts2.framework.plugin.service.exist.dao.ExistManager;
 import edu.mayo.cts2.framework.plugin.service.exist.profile.validator.ChangeSetUriValidator;
 import edu.mayo.cts2.framework.plugin.service.exist.util.ExistServiceUtils;
 import edu.mayo.cts2.framework.service.profile.UpdateChangeableMetadataRequest;
+import org.xmldb.api.base.Resource;
+
+import java.util.Date;
 
 /**
  * The Class AbstractService.
@@ -44,50 +44,69 @@ public abstract class AbstractExistMaintenanceService<
 	I,
 	T extends BaseMaintenanceService> 
 	extends AbstractExistResourceReadingService<R,I,T> 
-	implements edu.mayo.cts2.framework.service.profile.BaseMaintenanceService<D,R,I> {
+	implements edu.mayo.cts2.framework.service.profile.BaseMaintenanceService<D,R,I>, 
+	ChangeableResourceHandler {
 
 	@javax.annotation.Resource
 	private StateChangeCallback stateChangeCallback;
-	
-	@javax.annotation.Resource
-	private ChangeSetUriValidator changeSetUriValidator;
+
+    @javax.annotation.Resource
+    private ChangeSetUriValidator changeSetUriValidator;
+
+    @javax.annotation.Resource
+    private ExistManager existManager;
 	
 	@Override
 	public void updateChangeableMetadata(I identifier,
 			UpdateChangeableMetadataRequest request) {
-		// TODO Auto-generated method stub
-		
+        //TODO:
+		throw new UnsupportedOperationException();
 	}
 
-	@Override
-	public void deleteResource(I identifier, String changeSetUri) {
-		//this can either be
-		//a) A DELETE of a COMMITTED Resource
-		//b) A DELETE of a Resource in an PENDING ChangeSet
-		//check in the change set first.
-		Resource resource = this.getResource(identifier,changeSetUri);
-		if(resource == null){
-			resource = this.getResource(identifier);
-		}
-	
-		D changeable = this.doUnmarshall(resource);
-		
-		ChangeableElementGroup group = changeable.getChangeableElementGroup();
-		
-		ChangeDescription changeDescription = new ChangeDescription();
-		
-		changeDescription.setChangeDate(new Date());
-		changeDescription.setChangeType(ChangeType.DELETE);
-		changeDescription.setCommitted(ChangeCommitted.PENDING);
-		changeDescription.setContainingChangeSet(changeSetUri);
-		
-		group.setChangeDescription(changeDescription);
+    @Override
+    public void deleteResource(I identifier, String changeSetUri) {
+        //this can either be
+        //a) A DELETE of a COMMITTED Resource
+        //b) A DELETE of a Resource in an PENDING ChangeSet
+        //check in the change set first.
+        Resource resource = this.getResource(identifier,changeSetUri);
+        if(resource == null){
+            resource = this.getResource(identifier);
+        }
 
-		this.doStoreResource(changeable);
-		
-		ChangeableResource choice = new ChangeableResource();
-		
-		this.addResourceToChangeableResource(choice, changeable);
+        D changeable = this.doUnmarshall(resource);
+
+        ChangeableElementGroup group = changeable.getChangeableElementGroup();
+
+        ChangeDescription changeDescription = new ChangeDescription();
+        changeDescription.setChangeDate(new Date());
+        changeDescription.setChangeType(ChangeType.DELETE);
+        changeDescription.setCommitted(ChangeCommitted.PENDING);
+        changeDescription.setContainingChangeSet(changeSetUri);
+
+        group.setChangeDescription(changeDescription);
+
+        this.doDeleteResource(changeable);
+    }
+
+	protected void doDeleteResource(D changeable) {
+        ChangeableElementGroup group = changeable.getChangeableElementGroup();
+        String changeSetUri = group.getChangeDescription().getContainingChangeSet();
+        ChangeableResource choice = new ChangeableResource();
+        this.addResourceToChangeableResource(choice, changeable);
+
+        if(this.existManager.isUseChangeSets()) {
+            this.changeSetUriValidator.validateChangeSet(changeSetUri);
+
+            this.doStoreResource(changeable);
+        } else {
+            String path = this.getPathFromResource(changeable);
+
+            String name = this.getExistStorageNameForResource(changeable);
+
+            this.getExistResourceDao().deleteResource(
+                    this.createPath(this.getResourceInfo().getResourceBasePath(), path), name);
+        }
 		
 		this.stateChangeCallback.resourceDeleted(choice, changeSetUri);
 	}
@@ -113,7 +132,7 @@ public abstract class AbstractExistMaintenanceService<
 		D resource = this.resourceToIndentifiedResource(inputResource);
 
 		this.doStoreResource(resource);
-		
+
 		ChangeableResource choice = new ChangeableResource();
 		
 		this.addResourceToChangeableResource(choice, resource);
@@ -128,22 +147,26 @@ public abstract class AbstractExistMaintenanceService<
 	protected abstract String getPathFromResource(D inputResource);
 
 	protected void doStoreResource(D resource){
-		
 		String path = 
 				this.getPathFromResource(resource);
 
 		String name = this.getExistStorageNameForResource(resource);
 
-		ChangeableElementGroup group = resource.getChangeableElementGroup();
-		
-		String changeSetUri = group.getChangeDescription().getContainingChangeSet();
-		
-		this.changeSetUriValidator.validateChangeSet(changeSetUri);
-		
-		String changeSetDir = ExistServiceUtils.getTempChangeSetContentDirName(changeSetUri);
-		
-		String wholePath = this.createPath(changeSetDir, this.getResourceInfo().getResourceBasePath(), path);
-	
+        String wholePath;
+
+        if(this.existManager.isUseChangeSets()) {
+            ChangeableElementGroup group = resource.getChangeableElementGroup();
+
+            String changeSetUri = group.getChangeDescription().getContainingChangeSet();
+
+            this.changeSetUriValidator.validateChangeSet(changeSetUri);
+
+            String changeSetDir = ExistServiceUtils.getTempChangeSetContentDirName(changeSetUri);
+            wholePath = this.createPath(changeSetDir, this.getResourceInfo().getResourceBasePath(), path);
+        } else {
+            wholePath = this.createPath(this.getResourceInfo().getResourceBasePath(), path);
+        }
+
 		this.getExistResourceDao().storeResource(wholePath, name, 
 				this.processResourceBeforeStore(resource));
 	}
@@ -153,5 +176,45 @@ public abstract class AbstractExistMaintenanceService<
 	protected abstract String getExistStorageNameForResource(D resource);
 
 	protected abstract void addResourceToChangeableResource(ChangeableResource choice, D resource);
-
+	
+	/**
+	 * Gets the resource from changeable resource.
+	 * 
+	 * Return NULL if the ChangeableResource contains an element that this service cannot process.
+	 *
+	 * @param choice the choice
+	 * @return the resource from changeable resource
+	 */
+	protected abstract R getResourceFromChangeableResource(ChangeableResource choice);
+	
+	public void handle(ChangeableResource changeableResource){
+		R resource = this.getResourceFromChangeableResource(changeableResource);
+		if(resource == null){
+			return;
+		}
+		
+		ChangeType changeType = 
+			changeableResource.getChangeableElementGroup().getChangeDescription().getChangeType();
+				
+		switch(changeType){
+		case UPDATE:
+			this.updateResource(this.resourceToIndentifiedResource(resource));
+			break;
+		case CLONE:
+			throw new UnsupportedOperationException();
+		case CREATE:
+			this.createResource(resource);
+			break;
+		case DELETE:
+            this.doDeleteResource(this.resourceToIndentifiedResource(resource));
+			break;
+		case IMPORT:
+			this.createResource(resource);
+			break;
+		case METADATA:
+			throw new UnsupportedOperationException();
+		default:
+			throw new UnsupportedOperationException();
+		}
+	}
 }

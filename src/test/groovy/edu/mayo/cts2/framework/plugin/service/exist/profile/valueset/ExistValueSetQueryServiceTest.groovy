@@ -1,23 +1,17 @@
-package edu.mayo.cts2.framework.plugin.service.exist.profile.valueset;
-
-import static org.junit.Assert.*
-
-import org.junit.Test
-import org.springframework.beans.factory.annotation.Autowired
-
+package edu.mayo.cts2.framework.plugin.service.exist.profile.valueset
 import edu.mayo.cts2.framework.model.command.Page
 import edu.mayo.cts2.framework.model.command.ResolvedFilter
-import edu.mayo.cts2.framework.model.core.ChangeDescription
-import edu.mayo.cts2.framework.model.core.ChangeableElementGroup
-import edu.mayo.cts2.framework.model.core.EntryDescription
-import edu.mayo.cts2.framework.model.core.MatchAlgorithmReference
-import edu.mayo.cts2.framework.model.core.PropertyReference
-import edu.mayo.cts2.framework.model.core.URIAndEntityName
+import edu.mayo.cts2.framework.model.core.*
 import edu.mayo.cts2.framework.model.core.types.ChangeType
 import edu.mayo.cts2.framework.model.util.ModelUtils
 import edu.mayo.cts2.framework.model.valueset.ValueSetCatalogEntry
 import edu.mayo.cts2.framework.plugin.service.exist.profile.BaseServiceDbCleaningBase
 import edu.mayo.cts2.framework.service.profile.valueset.ValueSetQuery
+import org.junit.Test
+import org.springframework.beans.factory.annotation.Autowired
+
+import static org.junit.Assert.assertEquals
+import static org.junit.Assert.assertNotNull
 
 class ExistValueSetQueryServiceTest extends BaseServiceDbCleaningBase {
 
@@ -68,13 +62,137 @@ class ExistValueSetQueryServiceTest extends BaseServiceDbCleaningBase {
 					[new ResolvedFilter(
 						matchValue:"m",
 						matchAlgorithmReference: new MatchAlgorithmReference("contains"),
-						propertyReference: new PropertyReference(referenceTarget: new URIAndEntityName(name:"resourceName"))
+						componentReference: new ComponentReference(attributeReference: "resourceName")
 						)] as Set
 				}
 				
 			] as ValueSetQuery,null,new Page())
 		assertNotNull summaries
 		assertEquals 1, summaries.entries.size()
+	}
+	
+	@Test void TestQueryWithStartsWithFilter(){
+		
+		def changeSetUri = changeSetService.createChangeSet().getChangeSetURI()
+		
+		def vs = new ValueSetCatalogEntry(about:"about",valueSetName:"fred")
+		vs.setChangeableElementGroup(new ChangeableElementGroup(
+			changeDescription: new ChangeDescription(
+				changeType: ChangeType.CREATE,
+				changeDate: new Date(),
+				containingChangeSet: changeSetUri)))
+		
+		maint.createResource(vs)
+		changeSetService.commitChangeSet(changeSetUri)
+
+		def summaries = query.getResourceSummaries(
+			[
+				getRestrictions:{null},
+				getReadContext:{null},
+				getFilterComponent:{
+					[new ResolvedFilter(
+						matchValue:"fre",
+						matchAlgorithmReference: new MatchAlgorithmReference("startsWith"),
+						componentReference: new ComponentReference(attributeReference: "resourceName")
+						)] as Set
+				}
+				
+			] as ValueSetQuery,null,new Page())
+		assertNotNull summaries
+		assertEquals 1, summaries.entries.size()
+	}
+	
+	@Test void TestQueryWithStartsWithFilterShouldFail(){
+		
+		def changeSetUri = changeSetService.createChangeSet().getChangeSetURI()
+		
+		def vs = new ValueSetCatalogEntry(about:"about",valueSetName:"fred")
+		vs.setChangeableElementGroup(new ChangeableElementGroup(
+			changeDescription: new ChangeDescription(
+				changeType: ChangeType.CREATE,
+				changeDate: new Date(),
+				containingChangeSet: changeSetUri)))
+		
+		maint.createResource(vs)
+		changeSetService.commitChangeSet(changeSetUri)
+
+		def summaries = query.getResourceSummaries(
+			[
+				getRestrictions:{null},
+				getReadContext:{null},
+				getFilterComponent:{
+					[new ResolvedFilter(
+						matchValue:"red",
+						matchAlgorithmReference: new MatchAlgorithmReference("startsWith"),
+						componentReference: new ComponentReference(attributeReference: "resourceName")
+						)] as Set
+				}
+				
+			] as ValueSetQuery,null,new Page())
+		assertNotNull summaries
+		assertEquals 0, summaries.entries.size()
+	}
+	
+	@Test void TestQueryWithLuceneFilter(){
+		
+		def changeSetUri = changeSetService.createChangeSet().getChangeSetURI()
+		
+		def vs = new ValueSetCatalogEntry(about:"about",valueSetName:"a really long name with a lot of words")
+		vs.setChangeableElementGroup(new ChangeableElementGroup(
+			changeDescription: new ChangeDescription(
+				changeType: ChangeType.CREATE,
+				changeDate: new Date(),
+				containingChangeSet: changeSetUri)))
+		
+		maint.createResource(vs)
+		changeSetService.commitChangeSet(changeSetUri)
+
+		def summaries = query.getResourceSummaries(
+			[
+				getRestrictions:{null},
+				getReadContext:{null},
+				getFilterComponent:{
+					[new ResolvedFilter(
+						matchValue:"long words",
+						matchAlgorithmReference: new MatchAlgorithmReference("lucene"),
+						componentReference: new ComponentReference(attributeReference: "resourceName")
+						)] as Set
+				}
+				
+			] as ValueSetQuery,null,new Page())
+		assertNotNull summaries
+		assertEquals 1, summaries.entries.size()
+	}
+	
+	@Test void TestQueryWithLuceneFilterNoResult(){
+		
+		def changeSetUri = changeSetService.createChangeSet().getChangeSetURI()
+		
+		def vs = new ValueSetCatalogEntry(about:"about",valueSetName:"a really long name with a lot of words")
+		vs.setChangeableElementGroup(new ChangeableElementGroup(
+			changeDescription: new ChangeDescription(
+				changeType: ChangeType.CREATE,
+				changeDate: new Date(),
+				containingChangeSet: changeSetUri)))
+		
+		maint.createResource(vs)
+		changeSetService.commitChangeSet(changeSetUri)
+
+		def summaries = query.getResourceSummaries(
+			[
+				getRestrictions:{null},
+				getReadContext:{null},
+				getFilterComponent:{
+					[new ResolvedFilter(
+						matchValue:"fred",
+						matchAlgorithmReference: new MatchAlgorithmReference("lucene"),
+						componentReference: new ComponentReference(attributeReference: "resourceName")
+						)] as Set
+				}
+				
+			] as ValueSetQuery,null,new Page())
+		assertNotNull summaries
+		assertEquals 0, summaries.entries.size()
 	}
 	
 	@Test void TestQueryWithFilterResourceSynopsis(){
@@ -101,7 +219,40 @@ class ExistValueSetQueryServiceTest extends BaseServiceDbCleaningBase {
 					[new ResolvedFilter(
 						matchValue:"des",
 						matchAlgorithmReference: new MatchAlgorithmReference("contains"),
-						propertyReference: new PropertyReference(referenceTarget: new URIAndEntityName(name:"resourceSynopsis"))
+						componentReference: new ComponentReference(attributeReference: "resourceSynopsis")
+						)] as Set
+				}
+				
+			] as ValueSetQuery,null,new Page())
+		assertNotNull summaries
+		assertEquals 1, summaries.entries.size()
+	}
+	
+	@Test void TestQueryWithLuceneFilterResourceSynopsis(){
+		
+		def changeSetUri = changeSetService.createChangeSet().getChangeSetURI()
+		
+		def vs = new ValueSetCatalogEntry(about:"about",valueSetName:"name")
+		vs.resourceSynopsis = new EntryDescription()
+		vs.resourceSynopsis.setValue(ModelUtils.toTsAnyType("another description with a bunch of words.... "))
+		vs.setChangeableElementGroup(new ChangeableElementGroup(
+			changeDescription: new ChangeDescription(
+				changeType: ChangeType.CREATE,
+				changeDate: new Date(),
+				containingChangeSet: changeSetUri)))
+		
+		maint.createResource(vs)
+		changeSetService.commitChangeSet(changeSetUri)
+
+		def summaries = query.getResourceSummaries(
+			[
+				getRestrictions:{null},
+				getReadContext:{null},
+				getFilterComponent:{
+					[new ResolvedFilter(
+						matchValue:"des* words",
+						matchAlgorithmReference: new MatchAlgorithmReference("lucene"),
+						componentReference: new ComponentReference(attributeReference: "resourceSynopsis")
 						)] as Set
 				}
 				
@@ -134,7 +285,7 @@ class ExistValueSetQueryServiceTest extends BaseServiceDbCleaningBase {
 					[new ResolvedFilter(
 						matchValue:"__INVALID__",
 						matchAlgorithmReference: new MatchAlgorithmReference("contains"),
-						propertyReference: new PropertyReference(referenceTarget: new URIAndEntityName(name:"resourceSynopsis"))
+						componentReference: new ComponentReference(attributeReference: "resourceSynopsis")
 						)] as Set
 				}
 				
@@ -165,7 +316,7 @@ class ExistValueSetQueryServiceTest extends BaseServiceDbCleaningBase {
 					[new ResolvedFilter(
 						matchValue:"__INVALID__",
 						matchAlgorithmReference: new MatchAlgorithmReference("contains"),
-						propertyReference: new PropertyReference(referenceTarget: new URIAndEntityName(name:"resourceName"))
+						componentReference: new ComponentReference(attributeReference: "resourceSynopsis")
 						)] as Set
 				}
 				

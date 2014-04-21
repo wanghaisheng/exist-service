@@ -1,25 +1,23 @@
 package edu.mayo.cts2.framework.plugin.service.exist.profile.valuesetdefinition;
 
-import java.util.Arrays;
-import java.util.List;
-
 import javax.annotation.Resource;
-
+import org.apache.commons.lang.StringUtils;
 import org.springframework.stereotype.Component;
-
-import edu.mayo.cts2.framework.filter.match.StateAdjustingPropertyReference;
-import edu.mayo.cts2.framework.filter.match.StateAdjustingPropertyReference.StateUpdater;
+import org.xmldb.api.base.XMLDBException;
 import edu.mayo.cts2.framework.model.command.Page;
-import edu.mayo.cts2.framework.model.core.MatchAlgorithmReference;
 import edu.mayo.cts2.framework.model.core.SortCriteria;
 import edu.mayo.cts2.framework.model.directory.DirectoryResult;
+import edu.mayo.cts2.framework.model.exception.UnspecifiedCts2Exception;
+import edu.mayo.cts2.framework.model.service.exception.UnknownValueSetDefinition;
+import edu.mayo.cts2.framework.model.util.ModelUtils;
 import edu.mayo.cts2.framework.model.valuesetdefinition.ValueSetDefinition;
 import edu.mayo.cts2.framework.model.valuesetdefinition.ValueSetDefinitionDirectoryEntry;
+import edu.mayo.cts2.framework.model.valuesetdefinition.ValueSetDefinitionListEntry;
 import edu.mayo.cts2.framework.plugin.service.exist.profile.AbstractExistQueryService;
 import edu.mayo.cts2.framework.plugin.service.exist.restrict.directory.XpathDirectoryBuilder;
 import edu.mayo.cts2.framework.plugin.service.exist.restrict.directory.XpathDirectoryBuilder.XpathState;
+import edu.mayo.cts2.framework.plugin.service.exist.util.ExistServiceUtils;
 import edu.mayo.cts2.framework.service.command.restriction.ValueSetDefinitionQueryServiceRestrictions;
-import edu.mayo.cts2.framework.service.meta.StandardModelAttributeReference;
 import edu.mayo.cts2.framework.service.profile.valuesetdefinition.ValueSetDefinitionQuery;
 import edu.mayo.cts2.framework.service.profile.valuesetdefinition.ValueSetDefinitionQueryService;
 
@@ -49,36 +47,22 @@ public class ExistValueSetDefinitionQueryService
 		summary.setDefinedValueSet(resource.getDefinedValueSet());
 		summary.setVersionTag(resource.getVersionTag());
 
-		summary.setHref(getUrlConstructor().createValueSetDefinitionUrl(
-				"TODO",
-				resource.getDocumentURI()));
+		String name;
+		try {
+			name = ExistServiceUtils.getNameFromResourceName(eXistResource.getId());
+		} catch (XMLDBException e) {
+			throw new IllegalStateException(e);
+	}
+	
+	summary.setHref(
+		this.getUrlConstructor().createValueSetDefinitionUrl(resource.getDefinedValueSet().getContent(), name));
 		
 		return summary;
 	}
 
-	private class ValueSetNameStateUpdater implements StateUpdater<XpathState> {
-
-		@Override
-		public XpathState updateState(XpathState currentState, MatchAlgorithmReference matchAlgorithm, String queryString) {
-			currentState.setXpath("valueset:ValueSetCatalogEntry/@valueSetName = '" + queryString + "'");
-			
-			return currentState;
-		}	
-	}
-	
-	@SuppressWarnings("unchecked")
-	protected List<StateAdjustingPropertyReference<XpathState>> getAvailableModelAttributeReferences() {
-		StateAdjustingPropertyReference<XpathState> refName = 
-				StateAdjustingPropertyReference.toPropertyReference(
-					StandardModelAttributeReference.RESOURCE_NAME.getPropertyReference(),
-						new ValueSetNameStateUpdater());
-		
-		return Arrays.asList(refName);
-	}
-	
 	private class ValueSetDefinitionDirectoryBuilder extends XpathDirectoryBuilder<XpathState,ValueSetDefinitionDirectoryEntry> {
 		
-		public ValueSetDefinitionDirectoryBuilder(final String changeSetUri) {
+		public ValueSetDefinitionDirectoryBuilder(final String changeSetUri, final ValueSetDefinitionQueryServiceRestrictions vsdqServiceRestrictions) {
 			super(new XpathState(), new Callback<XpathState, ValueSetDefinitionDirectoryEntry>() {
 
 				@Override
@@ -86,6 +70,31 @@ public class ExistValueSetDefinitionQueryService
 						XpathState state, 
 						int start, 
 						int maxResults) {
+					
+					if (vsdqServiceRestrictions != null && vsdqServiceRestrictions.getValueSet() != null)
+					{
+						if (StringUtils.isNotBlank(state.getXpath()))
+						{
+							throw new UnspecifiedCts2Exception("Unsupported operation - currently cannot combine state filters from a restriction with "
+									+ "a valueSetDefinition restriction");
+						}
+						
+						if (StringUtils.isNotBlank(vsdqServiceRestrictions.getValueSet().getName()))
+						{
+							state.setXpath("[valuesetdefinition:definedValueSet = '" + vsdqServiceRestrictions.getValueSet().getName() + "']");
+						}
+						else if (StringUtils.isNotBlank(vsdqServiceRestrictions.getValueSet().getUri()))
+						{
+							state.setXpath("[valuesetdefinition:definedValueSet/@uri = '" + vsdqServiceRestrictions.getValueSet().getUri() + "']");
+						}
+						else
+						{
+							UnknownValueSetDefinition uvsd = new UnknownValueSetDefinition();
+							uvsd.setCts2Message(ModelUtils.createOpaqueData("No identifier was specified for the ValueSet"));
+							throw uvsd;
+						}
+					}
+					
 					return getResourceSummaries(
 							getResourceInfo(),
 							changeSetUri,
@@ -113,8 +122,8 @@ public class ExistValueSetDefinitionQueryService
 		ValueSetDefinitionDirectoryBuilder builder = 
 			new ValueSetDefinitionDirectoryBuilder(
 					this.getChangeSetUri(
-							query.getReadContext()));
-		
+							query.getReadContext()), query.getRestrictions());
+		//TODO implement sort
 		return 
 			builder.restrict(query.getFilterComponent()).
 				restrict(query.getQuery()).
@@ -124,7 +133,7 @@ public class ExistValueSetDefinitionQueryService
 	}
 
 	@Override
-	public DirectoryResult<ValueSetDefinition> getResourceList(
+	public DirectoryResult<ValueSetDefinitionListEntry> getResourceList(
 			ValueSetDefinitionQuery query, 
 			SortCriteria sort,
 			Page page) {

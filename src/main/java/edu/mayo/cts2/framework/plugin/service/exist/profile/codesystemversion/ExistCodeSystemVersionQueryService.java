@@ -1,11 +1,7 @@
 package edu.mayo.cts2.framework.plugin.service.exist.profile.codesystemversion;
 
-import javax.annotation.Resource;
-
-import org.apache.commons.lang.StringUtils;
-import org.springframework.stereotype.Component;
-
 import edu.mayo.cts2.framework.model.codesystemversion.CodeSystemVersionCatalogEntry;
+import edu.mayo.cts2.framework.model.codesystemversion.CodeSystemVersionCatalogEntryListEntry;
 import edu.mayo.cts2.framework.model.codesystemversion.CodeSystemVersionCatalogEntrySummary;
 import edu.mayo.cts2.framework.model.command.Page;
 import edu.mayo.cts2.framework.model.core.SortCriteria;
@@ -17,6 +13,10 @@ import edu.mayo.cts2.framework.plugin.service.exist.restrict.directory.XpathDire
 import edu.mayo.cts2.framework.service.command.restriction.CodeSystemVersionQueryServiceRestrictions;
 import edu.mayo.cts2.framework.service.profile.codesystemversion.CodeSystemVersionQuery;
 import edu.mayo.cts2.framework.service.profile.codesystemversion.CodeSystemVersionQueryService;
+import org.apache.commons.lang.StringUtils;
+import org.springframework.stereotype.Component;
+
+import javax.annotation.Resource;
 
 @Component
 public class ExistCodeSystemVersionQueryService 
@@ -52,7 +52,7 @@ public class ExistCodeSystemVersionQueryService
 				
 				private String getCodeSystemXpath(final String codeSystem){
 					if(StringUtils.isNotBlank(codeSystem)){
-						return "[codesystemversion:versionOf[text() = '"+codeSystem+"']]";
+						return "[codesystemversion:versionOf = '"+codeSystem+"']";
 					} else {
 						return "";
 					}
@@ -121,12 +121,13 @@ public class ExistCodeSystemVersionQueryService
 		if(restrictions != null && restrictions.getCodeSystem() != null){
 			return restrictions.getCodeSystem().getName();
 		}
+		//TODO this is incomplete... it needs to handle URIs too...
 		
 		return null;
 	}
 
 	@Override
-	public DirectoryResult<CodeSystemVersionCatalogEntry> getResourceList(
+	public DirectoryResult<CodeSystemVersionCatalogEntryListEntry> getResourceList(
 			CodeSystemVersionQuery query, 
 			SortCriteria sort,
 			Page page) {

@@ -1,35 +1,22 @@
 package edu.mayo.cts2.framework.plugin.service.exist.profile.codesystem
 
-import edu.mayo.cts2.framework.model.core.CodeSystemVersionReference
-import edu.mayo.cts2.framework.model.core.NameAndMeaningReference
-
-import static org.junit.Assert.*
-
-import org.junit.Test
-import org.springframework.beans.factory.annotation.Autowired
-
-
 import edu.mayo.cts2.framework.model.codesystem.CodeSystemCatalogEntry
 import edu.mayo.cts2.framework.model.command.Page
 import edu.mayo.cts2.framework.model.command.ResolvedFilter
 import edu.mayo.cts2.framework.model.command.ResolvedReadContext
-import edu.mayo.cts2.framework.model.core.ChangeDescription
-import edu.mayo.cts2.framework.model.core.ChangeableElementGroup
-import edu.mayo.cts2.framework.model.core.MatchAlgorithmReference
-import edu.mayo.cts2.framework.model.core.ModelAttributeReference
-import edu.mayo.cts2.framework.model.core.PropertyReference
-import edu.mayo.cts2.framework.model.core.URIAndEntityName
+import edu.mayo.cts2.framework.model.core.*
 import edu.mayo.cts2.framework.model.core.types.ChangeCommitted
 import edu.mayo.cts2.framework.model.core.types.ChangeType
-import edu.mayo.cts2.framework.model.core.types.TargetReferenceType
-import edu.mayo.cts2.framework.model.mapversion.*
 import edu.mayo.cts2.framework.model.service.core.NameOrURI
 import edu.mayo.cts2.framework.model.util.ModelUtils
 import edu.mayo.cts2.framework.plugin.service.exist.profile.BaseServiceDbCleaningBase
-import edu.mayo.cts2.framework.service.constant.ExternalCts2Constants
 import edu.mayo.cts2.framework.service.meta.StandardMatchAlgorithmReference
 import edu.mayo.cts2.framework.service.meta.StandardModelAttributeReference
 import edu.mayo.cts2.framework.service.profile.ResourceQuery
+import org.junit.Test
+import org.springframework.beans.factory.annotation.Autowired
+
+import static org.junit.Assert.*
 
 class ExistCodeSystemServiceGroovyTestIT extends BaseServiceDbCleaningBase {
 
@@ -158,7 +145,7 @@ class ExistCodeSystemServiceGroovyTestIT extends BaseServiceDbCleaningBase {
         def filter = new ResolvedFilter(
                 matchAlgorithmReference:new MatchAlgorithmReference(content:"contains"),
                 matchValue:"am",
-                propertyReference:new PropertyReference(referenceTarget: new URIAndEntityName(name:"resourceName"))
+                componentReference:new ComponentReference(attributeReference: "resourceName")
         )
 
         def q = [
@@ -187,7 +174,7 @@ class ExistCodeSystemServiceGroovyTestIT extends BaseServiceDbCleaningBase {
 		def filter = new ResolvedFilter(
 			matchAlgorithmReference:new MatchAlgorithmReference(content:"contains"),
 			matchValue:"am",
-			propertyReference:new PropertyReference(referenceTarget: new URIAndEntityName(name:"resourceName"))
+			componentReference:new ComponentReference(attributeReference: "resourceName")
 		)
 		
 		def q = [
@@ -198,7 +185,71 @@ class ExistCodeSystemServiceGroovyTestIT extends BaseServiceDbCleaningBase {
 
 		assertEquals 1, query.getResourceSummaries(q, null, new Page()).entries.size()
 	}
-	
+
+    @Test void TestQueryWithContainsResourceSynopsis(){
+
+        def changeSetUri = changeSetService.createChangeSet().getChangeSetURI()
+
+        def cs = new CodeSystemCatalogEntry(
+                about:"about",
+                codeSystemName:"name",
+                resourceSynopsis:new EntryDescription(value: ModelUtils.toTsAnyType("my thing")))
+        cs.setChangeableElementGroup(new ChangeableElementGroup(
+                changeDescription: new ChangeDescription(
+                        changeType: ChangeType.CREATE,
+                        changeDate: new Date(),
+                        containingChangeSet: changeSetUri)))
+
+        maint.createResource(cs)
+        changeSetService.commitChangeSet(changeSetUri)
+
+        def filter = new ResolvedFilter(
+                matchAlgorithmReference:new MatchAlgorithmReference(content:"contains"),
+                matchValue:"thing",
+                componentReference:new ComponentReference(attributeReference: "resourceSynopsis")
+        )
+
+        def q = [
+                getFilterComponent : { [filter] as Set },
+                getReadContext : { },
+                getQuery : { }
+        ] as ResourceQuery
+
+        assertEquals 1, query.getResourceSummaries(q, null, new Page()).entries.size()
+    }
+
+    @Test void TestQueryWithContainsResourceSynopsisBad(){
+
+        def changeSetUri = changeSetService.createChangeSet().getChangeSetURI()
+
+        def cs = new CodeSystemCatalogEntry(
+                about:"about",
+                codeSystemName:"name",
+                resourceSynopsis:new EntryDescription(value: ModelUtils.toTsAnyType("my thing")))
+        cs.setChangeableElementGroup(new ChangeableElementGroup(
+                changeDescription: new ChangeDescription(
+                        changeType: ChangeType.CREATE,
+                        changeDate: new Date(),
+                        containingChangeSet: changeSetUri)))
+
+        maint.createResource(cs)
+        changeSetService.commitChangeSet(changeSetUri)
+
+        def filter = new ResolvedFilter(
+                matchAlgorithmReference:new MatchAlgorithmReference(content:"contains"),
+                matchValue:"asdfasdfasdf",
+                componentReference:new ComponentReference(attributeReference: "resourceSynopsis")
+        )
+
+        def q = [
+                getFilterComponent : { [filter] as Set },
+                getReadContext : { },
+                getQuery : { }
+        ] as ResourceQuery
+
+        assertEquals 0, query.getResourceSummaries(q, null, new Page()).entries.size()
+    }
+
 	@Test void TestCommittedChangeStatus(){
 		
 		def changeSetUri1 = changeSetService.createChangeSet().getChangeSetURI()
@@ -428,7 +479,7 @@ class ExistCodeSystemServiceGroovyTestIT extends BaseServiceDbCleaningBase {
 		def fc = new ResolvedFilter(
 			matchAlgorithmReference:StandardMatchAlgorithmReference.CONTAINS.getMatchAlgorithmReference(),
 			matchValue:"name",
-			propertyReference: StandardModelAttributeReference.RESOURCE_NAME.propertyReference)
+			componentReference: StandardModelAttributeReference.RESOURCE_NAME.componentReference)
 		
 		def q = [
 			getFilterComponent : { [fc] as Set },
@@ -471,7 +522,7 @@ class ExistCodeSystemServiceGroovyTestIT extends BaseServiceDbCleaningBase {
 		def fc = new ResolvedFilter(
 			matchAlgorithmReference:StandardMatchAlgorithmReference.CONTAINS.getMatchAlgorithmReference(),
 			matchValue:"__INVALID__",
-			propertyReference: StandardModelAttributeReference.RESOURCE_NAME.propertyReference)
+			componentReference: StandardModelAttributeReference.RESOURCE_NAME.componentReference)
 		
 		def q = [
 			getFilterComponent : { [fc] as Set },
